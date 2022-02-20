@@ -5,9 +5,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/evgenspj/url-shortener/internal/app"
 )
+
+const baseServerURL = "localhost:8080"
 
 func ShortenerHandler(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
@@ -29,19 +32,20 @@ func ShortenerHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid url received", http.StatusBadRequest)
 		}
 
-		longUrl := url.String()
-		shortUrl := app.GenShortUrl(longUrl)
-		app.SaveShortUrl(shortUrl, longUrl)
+		longURL := url.String()
+		short := app.GenShort(longURL)
+		app.SaveShort(short, longURL)
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(shortUrl))
+		shortURL := strings.Join([]string{baseServerURL, short}, "/")
+		w.Write([]byte(shortURL))
 
 	default:
 		if r.Method != http.MethodGet {
 			http.Error(w, "Only GET requests are allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		shortUrl := r.URL.Path[1:]
-		longUrl, exists := app.GetUrlFromShort(shortUrl)
+		short := r.URL.Path[1:]
+		longUrl, exists := app.GetURLFromShort(short)
 		if !exists {
 			http.Error(w, "No such short url", http.StatusNotFound)
 			return
