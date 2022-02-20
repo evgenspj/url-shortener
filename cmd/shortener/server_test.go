@@ -135,11 +135,11 @@ func TestShortenerHandler_ShortenURL(t *testing.T) {
 			h := http.HandlerFunc(ShortenerHandler)
 			h.ServeHTTP(w, request)
 			resp := w.Result()
+			defer resp.Body.Close()
 
 			assert.Equal(t, tt.want.code, tt.want.code)
 			assert.Equal(t, tt.want.code, resp.StatusCode)
 			if tt.want.shortURLInBody {
-				defer resp.Body.Close()
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 				assert.Contains(t, string(respBody), baseServerURL)
