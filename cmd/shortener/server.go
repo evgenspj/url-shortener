@@ -10,7 +10,7 @@ import (
 	"github.com/evgenspj/url-shortener/internal/app"
 )
 
-const baseServerURL = "localhost:8080"
+const baseServerURL = "http://localhost:8080"
 
 func ShortenerHandler(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
@@ -45,12 +45,12 @@ func ShortenerHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		short := r.URL.Path[1:]
-		longUrl, exists := app.GetURLFromShort(short)
+		longURL, exists := app.GetURLFromShort(short)
 		if !exists {
 			http.Error(w, "No such short url", http.StatusNotFound)
 			return
 		}
-		http.Redirect(w, r, longUrl, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, longURL, http.StatusTemporaryRedirect)
 		return
 	}
 }
