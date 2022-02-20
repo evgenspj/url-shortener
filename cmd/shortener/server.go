@@ -25,11 +25,13 @@ func ShortenerHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println("Can't read request body")
 			http.Error(w, "Can't read request body", http.StatusBadRequest)
+			return
 		}
 		url, err := url.ParseRequestURI(string(data))
 		if err != nil {
 			log.Println("Invalid url received")
 			http.Error(w, "Invalid url received", http.StatusBadRequest)
+			return
 		}
 
 		longURL := url.String()

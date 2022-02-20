@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var urlMap = make(map[string]string)
+var Storage = make(map[string]string)
 
 func GenShort(url string) string {
 	var buf bytes.Buffer
@@ -17,10 +17,10 @@ func GenShort(url string) string {
 }
 
 func SaveShort(short string, longURL string) {
-	urlMap[short] = longURL
+	Storage[short] = longURL
 }
 
 func GetURLFromShort(short string) (string, bool) {
-	longURL, exists := urlMap[short]
+	longURL, exists := Storage[short]
 	return longURL, exists
 }
