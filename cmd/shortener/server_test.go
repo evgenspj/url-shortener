@@ -78,6 +78,7 @@ func TestShortenerHandler_GetByShort(t *testing.T) {
 			h := http.HandlerFunc(ShortenerHandler)
 			h.ServeHTTP(w, request)
 			resp := w.Result()
+			defer resp.Body.Close()
 
 			assert.Equal(t, tt.want.code, resp.StatusCode)
 			assert.Equal(t, tt.want.locationHeader, resp.Header.Get("Location"))
