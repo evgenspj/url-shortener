@@ -12,7 +12,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShortenerHandler_GetByShort(t *testing.T) {
+func testRequest(
+	t *testing.T,
+	ts *httptest.Server,
+	method,
+	path string,
+	reqBody string,
+) *http.Response {
+	req, err := http.NewRequest(method, ts.URL+path, bytes.NewBuffer([]byte(reqBody)))
+	require.NoError(t, err)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func TestGetFromShortHandler(t *testing.T) {
 	type want struct {
 		code           int
 		locationHeader string
@@ -68,25 +87,24 @@ func TestShortenerHandler_GetByShort(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app.Storage = tt.storedURLs
+			r := NewRouter()
+			ts := httptest.NewServer(r)
+			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
 				requestMethod = http.MethodGet
 			}
-			request := httptest.NewRequest(requestMethod, tt.request, nil)
-			w := httptest.NewRecorder()
-			h := http.HandlerFunc(ShortenerHandler)
-			h.ServeHTTP(w, request)
-			resp := w.Result()
+			app.Storage = tt.storedURLs
+			resp := testRequest(t, ts, requestMethod, tt.request, "")
 			defer resp.Body.Close()
 
-			assert.Equal(t, tt.want.code, resp.StatusCode)
+			require.Equal(t, tt.want.code, resp.StatusCode)
 			assert.Equal(t, tt.want.locationHeader, resp.Header.Get("Location"))
 		})
 	}
 }
 
-func TestShortenerHandler_ShortenURL(t *testing.T) {
+func TestShortenHandler(t *testing.T) {
 	type want struct {
 		code           int
 		shortURLInBody bool
@@ -125,20 +143,17 @@ func TestShortenerHandler_ShortenURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			r := NewRouter()
+			ts := httptest.NewServer(r)
+			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
 				requestMethod = http.MethodPost
 			}
-			body := []byte(tt.requestBody)
-			request := httptest.NewRequest(requestMethod, "/", bytes.NewBuffer(body))
-			w := httptest.NewRecorder()
-			h := http.HandlerFunc(ShortenerHandler)
-			h.ServeHTTP(w, request)
-			resp := w.Result()
+			resp := testRequest(t, ts, requestMethod, "/", tt.requestBody)
 			defer resp.Body.Close()
 
-			assert.Equal(t, tt.want.code, tt.want.code)
-			assert.Equal(t, tt.want.code, resp.StatusCode)
+			require.Equal(t, tt.want.code, resp.StatusCode)
 			if tt.want.shortURLInBody {
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
