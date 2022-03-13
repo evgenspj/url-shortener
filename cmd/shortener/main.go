@@ -7,7 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func NewRouter(handler Handler) chi.Router {
+func NewRouter(handler *Handler) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/", handler.ShortenHandler)
 	r.Get("/{ID}", handler.GetFromShortHandler)
@@ -16,6 +16,6 @@ func NewRouter(handler Handler) chi.Router {
 
 func main() {
 	handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
-	r := NewRouter(handler)
+	r := NewRouter(&handler)
 	http.ListenAndServe(":8080", r)
 }
