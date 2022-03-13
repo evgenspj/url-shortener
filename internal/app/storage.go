@@ -3,7 +3,7 @@ package app
 import "sync"
 
 type Storage interface {
-	SaveShort(short string, longUrl string)
+	SaveShort(short string, longURL string)
 	GetURLFromShort(short string) (string, bool)
 }
 
