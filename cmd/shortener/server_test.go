@@ -87,14 +87,15 @@ func TestGetFromShortHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := NewRouter()
+			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			handler.storage.Val = tt.storedURLs
+			r := NewRouter(handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
 				requestMethod = http.MethodGet
 			}
-			app.Storage = tt.storedURLs
 			resp := testRequest(t, ts, requestMethod, tt.request, "")
 			defer resp.Body.Close()
 
@@ -143,7 +144,8 @@ func TestShortenHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := NewRouter()
+			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			r := NewRouter(handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
 			requestMethod := tt.requestMethod
