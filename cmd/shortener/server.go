@@ -17,7 +17,7 @@ type Handler struct {
 	storage app.MyStorage
 }
 
-func (h Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)
 		return
@@ -44,7 +44,7 @@ func (h Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(shortURL))
 }
 
-func (h Handler) GetFromShortHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetFromShortHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Only GET requests are allowed", http.StatusMethodNotAllowed)
 		return
