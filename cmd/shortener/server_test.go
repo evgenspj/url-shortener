@@ -99,7 +99,10 @@ func TestGetFromShortHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			handler := Handler{
+				storage:       app.MyStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseServerURL,
+			}
 			handler.storage.Val = tt.storedURLs
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
@@ -163,7 +166,10 @@ func TestShortenHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			handler := Handler{
+				storage:       app.MyStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseServerURL,
+			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
@@ -185,7 +191,7 @@ func TestShortenHandler(t *testing.T) {
 			if tt.want.shortURLInBody {
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				assert.Contains(t, string(respBody), baseServerURL)
+				assert.Contains(t, string(respBody), defaultBaseServerURL)
 			}
 		})
 	}
@@ -243,7 +249,10 @@ func TestShortenHandlerJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			handler := Handler{
+				storage:       app.MyStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseServerURL,
+			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
@@ -271,7 +280,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 			if tt.want.shortURLInBody {
 				respJSONStruct := ShortenHandlerJSONResponse{}
 				json.NewDecoder(resp.Body).Decode(&respJSONStruct)
-				assert.Contains(t, respJSONStruct.Result, baseServerURL)
+				assert.Contains(t, respJSONStruct.Result, defaultBaseServerURL)
 			}
 		})
 	}

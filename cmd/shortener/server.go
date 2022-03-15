@@ -12,10 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const baseServerURL = "http://localhost:8080"
-
 type Handler struct {
-	storage app.MyStorage
+	storage       app.MyStorage
+	baseServerURL string
 }
 
 type ShortenHandlerJSONRequest struct {
@@ -49,7 +48,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	short := app.GenShort(longURL)
 	h.storage.SaveShort(short, longURL)
 	w.WriteHeader(http.StatusCreated)
-	shortURL := strings.Join([]string{baseServerURL, short}, "/")
+	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	w.Write([]byte(shortURL))
 }
 
@@ -97,7 +96,7 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	h.storage.SaveShort(short, longURL)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	shortURL := strings.Join([]string{baseServerURL, short}, "/")
+	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	ret, _ := json.Marshal(ShortenHandlerJSONResponse{shortURL})
 	w.Write(ret)
 }
