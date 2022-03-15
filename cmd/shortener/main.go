@@ -10,6 +10,7 @@ import (
 func NewRouter(handler *Handler) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/", handler.ShortenHandler)
+	r.Post("/api/shorten", handler.ShortenHandlerJSON)
 	r.Get("/{ID}", handler.GetFromShortHandler)
 	return r
 }
