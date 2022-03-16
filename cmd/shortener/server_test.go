@@ -30,8 +30,8 @@ func testRequest(args testRequestArgs) *http.Response {
 		bytes.NewBuffer([]byte(args.body)),
 	)
 	require.NoError(args.t, err)
-	for header_key, header_val := range args.headers {
-		req.Header.Set(header_key, strings.Join(header_val, "; "))
+	for headerKey, headerVal := range args.headers {
+		req.Header.Set(headerKey, strings.Join(headerVal, "; "))
 	}
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

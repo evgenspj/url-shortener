@@ -18,7 +18,7 @@ type Handler struct {
 }
 
 type ShortenHandlerJSONRequest struct {
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 
 type ShortenHandlerJSONResponse struct {
@@ -84,7 +84,7 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	url, err := url.ParseRequestURI(data.Url)
+	url, err := url.ParseRequestURI(data.URL)
 	if err != nil {
 		log.Println("Invalid url received")
 		http.Error(w, "Invalid url received", http.StatusBadRequest)
