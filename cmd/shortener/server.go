@@ -13,7 +13,7 @@ import (
 )
 
 type Handler struct {
-	storage       app.MyStorage
+	storage       app.Storage
 	baseServerURL string
 }
 

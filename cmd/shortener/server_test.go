@@ -100,10 +100,12 @@ func TestGetFromShortHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       app.MyStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{Val: make(map[string]string)},
 				baseServerURL: defaultBaseServerURL,
 			}
-			handler.storage.Val = tt.storedURLs
+			for short, long := range tt.storedURLs {
+				handler.storage.SaveShort(short, long)
+			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
@@ -167,7 +169,7 @@ func TestShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       app.MyStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{Val: make(map[string]string)},
 				baseServerURL: defaultBaseServerURL,
 			}
 			r := NewRouter(&handler)
@@ -250,7 +252,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       app.MyStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{Val: make(map[string]string)},
 				baseServerURL: defaultBaseServerURL,
 			}
 			r := NewRouter(&handler)

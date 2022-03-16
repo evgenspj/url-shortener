@@ -23,8 +23,9 @@ const (
 )
 
 type EnvConfig struct {
-	BaseServerURL string `env:"BASE_URL"`
-	ServerAddress string `env:"SERVER_ADDRESS"`
+	BaseServerURL   string `env:"BASE_URL"`
+	ServerAddress   string `env:"SERVER_ADDRESS"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 }
 
 func main() {
@@ -41,8 +42,15 @@ func main() {
 	if len(serverAddress) == 0 {
 		serverAddress = defaultServerAddress
 	}
+	var storage app.Storage
+	if len(envCfg.FileStoragePath) == 0 {
+		storage = &app.StructStorage{Val: make(map[string]string)}
+	} else {
+		storage = &app.JSONFileStorage{Filename: envCfg.FileStoragePath}
+	}
+
 	handler := Handler{
-		storage:       app.MyStorage{Val: make(map[string]string)},
+		storage:       storage,
 		baseServerURL: baseServerURL,
 	}
 	r := NewRouter(&handler)
