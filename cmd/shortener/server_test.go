@@ -101,7 +101,7 @@ func TestGetFromShortHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
 				storage:       &app.StructStorage{Val: make(map[string]string)},
-				baseServerURL: defaultBaseServerURL,
+				baseServerURL: defaultBaseURL,
 			}
 			for short, long := range tt.storedURLs {
 				handler.storage.SaveShort(short, long)
@@ -170,7 +170,7 @@ func TestShortenHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
 				storage:       &app.StructStorage{Val: make(map[string]string)},
-				baseServerURL: defaultBaseServerURL,
+				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
@@ -193,7 +193,7 @@ func TestShortenHandler(t *testing.T) {
 			if tt.want.shortURLInBody {
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				assert.Contains(t, string(respBody), defaultBaseServerURL)
+				assert.Contains(t, string(respBody), defaultBaseURL)
 			}
 		})
 	}
@@ -253,7 +253,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
 				storage:       &app.StructStorage{Val: make(map[string]string)},
-				baseServerURL: defaultBaseServerURL,
+				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
@@ -282,7 +282,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 			if tt.want.shortURLInBody {
 				respJSONStruct := ShortenHandlerJSONResponse{}
 				json.NewDecoder(resp.Body).Decode(&respJSONStruct)
-				assert.Contains(t, respJSONStruct.Result, defaultBaseServerURL)
+				assert.Contains(t, respJSONStruct.Result, defaultBaseURL)
 			}
 		})
 	}
