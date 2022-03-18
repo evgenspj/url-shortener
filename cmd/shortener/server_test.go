@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/evgenspj/url-shortener/internal/app"
@@ -12,22 +14,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testRequest(
-	t *testing.T,
-	ts *httptest.Server,
-	method,
-	path string,
-	reqBody string,
-) *http.Response {
-	req, err := http.NewRequest(method, ts.URL+path, bytes.NewBuffer([]byte(reqBody)))
-	require.NoError(t, err)
+type testRequestArgs struct {
+	t       *testing.T
+	ts      *httptest.Server
+	method  string
+	path    string
+	body    string
+	headers map[string][]string
+}
+
+func testRequest(args testRequestArgs) *http.Response {
+	req, err := http.NewRequest(
+		args.method,
+		args.ts.URL+args.path,
+		bytes.NewBuffer([]byte(args.body)),
+	)
+	require.NoError(args.t, err)
+	for headerKey, headerVal := range args.headers {
+		req.Header.Set(headerKey, strings.Join(headerVal, "; "))
+	}
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 	resp, err := client.Do(req)
-	require.NoError(t, err)
+	require.NoError(args.t, err)
 	return resp
 }
 
@@ -87,8 +99,13 @@ func TestGetFromShortHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
-			handler.storage.Val = tt.storedURLs
+			handler := Handler{
+				storage:       &app.StructStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseURL,
+			}
+			for short, long := range tt.storedURLs {
+				handler.storage.SaveShort(short, long)
+			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
@@ -96,7 +113,14 @@ func TestGetFromShortHandler(t *testing.T) {
 			if requestMethod == "" {
 				requestMethod = http.MethodGet
 			}
-			resp := testRequest(t, ts, requestMethod, tt.request, "")
+			reqArgs := testRequestArgs{
+				t:      t,
+				ts:     ts,
+				method: requestMethod,
+				path:   tt.request,
+				body:   "",
+			}
+			resp := testRequest(reqArgs)
 			defer resp.Body.Close()
 
 			require.Equal(t, tt.want.code, resp.StatusCode)
@@ -144,7 +168,10 @@ func TestShortenHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := Handler{storage: app.MyStorage{Val: make(map[string]string)}}
+			handler := Handler{
+				storage:       &app.StructStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseURL,
+			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(r)
 			defer ts.Close()
@@ -152,14 +179,110 @@ func TestShortenHandler(t *testing.T) {
 			if requestMethod == "" {
 				requestMethod = http.MethodPost
 			}
-			resp := testRequest(t, ts, requestMethod, "/", tt.requestBody)
+			reqArgs := testRequestArgs{
+				t:      t,
+				ts:     ts,
+				method: requestMethod,
+				path:   "/",
+				body:   tt.requestBody,
+			}
+			resp := testRequest(reqArgs)
 			defer resp.Body.Close()
 
 			require.Equal(t, tt.want.code, resp.StatusCode)
 			if tt.want.shortURLInBody {
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
-				assert.Contains(t, string(respBody), baseServerURL)
+				assert.Contains(t, string(respBody), defaultBaseURL)
+			}
+		})
+	}
+}
+
+func TestShortenHandlerJSON(t *testing.T) {
+	type want struct {
+		code           int
+		shortURLInBody bool
+	}
+	tests := []struct {
+		name           string
+		testURL        string
+		requestMethod  string
+		requestHeaders map[string][]string
+		want           want
+	}{
+		{
+			name:    "simple positive test",
+			testURL: "http://example.com",
+			want: want{
+				code:           201,
+				shortURLInBody: true,
+			},
+		},
+		{
+			name:    "invalid url",
+			testURL: "lorem ipsum",
+			want: want{
+				code:           http.StatusBadRequest,
+				shortURLInBody: false,
+			},
+		},
+		{
+			name:          "disallowed method",
+			testURL:       "http://example.com",
+			requestMethod: http.MethodPut,
+			want: want{
+				code:           http.StatusMethodNotAllowed,
+				shortURLInBody: false,
+			},
+		},
+		{
+			name:    "wrong Content-Type header",
+			testURL: "http://example.com",
+			requestHeaders: map[string][]string{
+				"Content-Type": {"text/plain"},
+			},
+			requestMethod: http.MethodPost,
+			want: want{
+				code:           http.StatusBadRequest,
+				shortURLInBody: false,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := Handler{
+				storage:       &app.StructStorage{Val: make(map[string]string)},
+				baseServerURL: defaultBaseURL,
+			}
+			r := NewRouter(&handler)
+			ts := httptest.NewServer(r)
+			defer ts.Close()
+			requestMethod := tt.requestMethod
+			if requestMethod == "" {
+				requestMethod = http.MethodPost
+			}
+			requestHeaders := tt.requestHeaders
+			if len(requestHeaders) == 0 {
+				requestHeaders = map[string][]string{"Content-Type": {"application/json"}}
+			}
+			requestBody, _ := json.Marshal(ShortenHandlerJSONRequest{tt.testURL})
+			reqArgs := testRequestArgs{
+				t:       t,
+				ts:      ts,
+				method:  requestMethod,
+				path:    "/api/shorten",
+				body:    string(requestBody),
+				headers: requestHeaders,
+			}
+			resp := testRequest(reqArgs)
+			defer resp.Body.Close()
+
+			require.Equal(t, tt.want.code, resp.StatusCode)
+			if tt.want.shortURLInBody {
+				respJSONStruct := ShortenHandlerJSONResponse{}
+				json.NewDecoder(resp.Body).Decode(&respJSONStruct)
+				assert.Contains(t, respJSONStruct.Result, defaultBaseURL)
 			}
 		})
 	}
