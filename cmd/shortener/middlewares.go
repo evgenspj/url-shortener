@@ -2,7 +2,6 @@ package main
 
 import (
 	"compress/gzip"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -33,7 +32,6 @@ func (b gzipBody) Read(p []byte) (int, error) {
 func gzipHandle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
-			fmt.Println("gzip content getted")
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
 				io.WriteString(w, err.Error())
@@ -44,7 +42,6 @@ func gzipHandle(next http.Handler) http.Handler {
 		}
 
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			fmt.Println("accept encoding gzip")
 			gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
 			if err != nil {
 				io.WriteString(w, err.Error())
