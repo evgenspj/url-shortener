@@ -78,5 +78,5 @@ func main() {
 		baseServerURL: baseURL,
 	}
 	r := NewRouter(&handler)
-	http.ListenAndServe(serverAddress, r)
+	http.ListenAndServe(serverAddress, middlewareConveyor(r, gzipHandle))
 }
