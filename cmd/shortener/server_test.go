@@ -100,7 +100,7 @@ func TestGetFromShortHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
 				baseServerURL: defaultBaseURL,
 			}
 			for short, long := range tt.storedURLs {
@@ -169,7 +169,7 @@ func TestShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
 				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)
@@ -252,7 +252,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{Val: make(map[string]string)},
+				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
 				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)

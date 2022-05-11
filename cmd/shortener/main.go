@@ -14,6 +14,7 @@ func NewRouter(handler *Handler) chi.Router {
 	r := chi.NewRouter()
 	r.Post("/", handler.ShortenHandler)
 	r.Post("/api/shorten", handler.ShortenHandlerJSON)
+	r.Get("/api/user/urls", handler.UserURLs)
 	r.Get("/{ID}", handler.GetFromShortHandler)
 	return r
 }
@@ -70,7 +71,10 @@ func main() {
 	case len(envCfg.FileStoragePath) > 0:
 		storage = &app.JSONFileStorage{Filename: envCfg.FileStoragePath}
 	default:
-		storage = &app.StructStorage{Val: make(map[string]string)}
+		storage = &app.StructStorage{
+			ShortToLong:   make(map[string]string),
+			UserIDToShort: make(map[uint32][]string),
+		}
 	}
 
 	handler := Handler{
@@ -78,5 +82,5 @@ func main() {
 		baseServerURL: baseURL,
 	}
 	r := NewRouter(&handler)
-	http.ListenAndServe(serverAddress, middlewareConveyor(r, gzipHandle))
+	http.ListenAndServe(serverAddress, middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
 }
