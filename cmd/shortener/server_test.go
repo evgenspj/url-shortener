@@ -15,12 +15,13 @@ import (
 )
 
 type testRequestArgs struct {
-	t       *testing.T
-	ts      *httptest.Server
-	method  string
-	path    string
-	body    string
-	headers map[string][]string
+	t         *testing.T
+	ts        *httptest.Server
+	method    string
+	path      string
+	body      string
+	headers   map[string][]string
+	userToken string
 }
 
 func testRequest(args testRequestArgs) *http.Response {
@@ -37,6 +38,13 @@ func testRequest(args testRequestArgs) *http.Response {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
+	}
+	if len(args.userToken) > 0 {
+		cookie := &http.Cookie{
+			Name:  "user_token",
+			Value: args.userToken,
+		}
+		req.AddCookie(cookie)
 	}
 	resp, err := client.Do(req)
 	require.NoError(args.t, err)
@@ -107,7 +115,7 @@ func TestGetFromShortHandler(t *testing.T) {
 				handler.storage.SaveShort(short, long)
 			}
 			r := NewRouter(&handler)
-			ts := httptest.NewServer(r)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
 			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
@@ -169,11 +177,14 @@ func TestShortenHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
+				storage: &app.StructStorage{
+					ShortToLong:   make(map[string]string),
+					UserIDToShort: make(map[uint32][]string),
+				},
 				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)
-			ts := httptest.NewServer(r)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
 			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
@@ -252,11 +263,14 @@ func TestShortenHandlerJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
+				storage: &app.StructStorage{
+					ShortToLong:   make(map[string]string),
+					UserIDToShort: make(map[uint32][]string),
+				},
 				baseServerURL: defaultBaseURL,
 			}
 			r := NewRouter(&handler)
-			ts := httptest.NewServer(r)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
 			defer ts.Close()
 			requestMethod := tt.requestMethod
 			if requestMethod == "" {
@@ -283,6 +297,81 @@ func TestShortenHandlerJSON(t *testing.T) {
 				respJSONStruct := ShortenHandlerJSONResponse{}
 				json.NewDecoder(resp.Body).Decode(&respJSONStruct)
 				assert.Contains(t, respJSONStruct.Result, defaultBaseURL)
+			}
+		})
+	}
+}
+
+func TestUserURLs(t *testing.T) {
+	type want struct {
+		code int
+		urls []string
+	}
+	userID := genUserID()
+	userToken := genUserTokenByID(userID)
+	wrongToken := "loremipsum"
+	tests := []struct {
+		name      string
+		userID    uint32
+		userToken string
+		want      want
+	}{
+		{
+			name:      "simple positive test",
+			userID:    userID,
+			userToken: userToken,
+			want: want{
+				code: 200,
+				urls: []string{app.GenShort("http://yandex.ru")},
+			},
+		},
+		{
+			name:      "wrong token",
+			userID:    userID,
+			userToken: wrongToken,
+			want: want{
+				code: 204,
+				urls: []string{app.GenShort("http://yandex.ru")},
+			},
+		},
+		{
+			name:      "no data",
+			userID:    userID,
+			userToken: userToken,
+			want: want{
+				code: 204,
+				urls: []string{},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := Handler{
+				storage: &app.StructStorage{
+					ShortToLong:   make(map[string]string),
+					UserIDToShort: map[uint32][]string{tt.userID: tt.want.urls},
+				},
+				baseServerURL: defaultBaseURL,
+			}
+			r := NewRouter(&handler)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
+			defer ts.Close()
+			requestMethod := http.MethodGet
+			reqArgs := testRequestArgs{
+				t:         t,
+				ts:        ts,
+				method:    requestMethod,
+				path:      "/api/user/urls",
+				userToken: tt.userToken,
+			}
+			resp := testRequest(reqArgs)
+			defer resp.Body.Close()
+
+			require.Equal(t, tt.want.code, resp.StatusCode)
+			if len(tt.want.urls) > 0 {
+				respSchema := make([]UserURLsResponseStruct, 0)
+				json.NewDecoder(resp.Body).Decode(&respSchema)
+				// assert.Equal(t, 1, len(respSchema))
 			}
 		})
 	}

@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -76,7 +75,6 @@ func userTokenCookieHandle(next http.Handler) http.Handler {
 		cookie, err := r.Cookie("user_token")
 		var userToken string
 		if err != nil {
-			log.Println(err)
 			userToken = genUserToken()
 		} else {
 			if (cookie == nil) || (!isValidToken(cookie.Value)) {

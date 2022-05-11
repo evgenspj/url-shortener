@@ -16,7 +16,12 @@ type Storage interface {
 }
 
 type StructStorage struct {
-	mu            sync.Mutex          `json:-`
+	mu            sync.Mutex
+	ShortToLong   map[string]string
+	UserIDToShort map[uint32][]string
+}
+
+type JSONStructure struct {
 	ShortToLong   map[string]string   `json:"short_to_long,omitempty"`
 	UserIDToShort map[uint32][]string `json:"user_id_to_short,omitempty"`
 }
@@ -41,7 +46,11 @@ func (storage *StructStorage) GetURLFromShort(short string) (longURL string, exi
 func (storage *StructStorage) AssociateUserIDWithShort(userID uint32, short string) error {
 	storage.mu.Lock()
 	defer storage.mu.Unlock()
-	storage.UserIDToShort[userID] = append(storage.UserIDToShort[userID], short)
+	userIDToShort, exists := storage.UserIDToShort[userID]
+	if !exists {
+		userIDToShort = make([]string, 0)
+	}
+	storage.UserIDToShort[userID] = append(userIDToShort, short)
 	return nil
 }
 
@@ -65,8 +74,11 @@ func (storage *JSONFileStorage) SaveShort(short string, longURL string) {
 	if len(data) == 0 {
 		data = []byte("{}")
 	}
-	savedURLs := StructStorage{}
+	savedURLs := JSONStructure{}
 	json.Unmarshal(data, &savedURLs)
+	if savedURLs.ShortToLong == nil {
+		savedURLs.ShortToLong = make(map[string]string)
+	}
 	savedURLs.ShortToLong[short] = longURL
 	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
 	if err != nil {
@@ -86,7 +98,7 @@ func (storage *JSONFileStorage) GetURLFromShort(short string) (longURL string, e
 	if err != nil {
 		log.Fatal(err)
 	}
-	savedURLs := StructStorage{}
+	savedURLs := JSONStructure{}
 	if len(data) == 0 {
 		data = []byte("{}")
 	}
@@ -96,7 +108,7 @@ func (storage *JSONFileStorage) GetURLFromShort(short string) (longURL string, e
 }
 
 func (storage *JSONFileStorage) AssociateUserIDWithShort(userID uint32, short string) error {
-	file, err := os.OpenFile(storage.Filename, os.O_RDONLY|os.O_CREATE|os.O_SYNC, 0777)
+	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,12 +117,19 @@ func (storage *JSONFileStorage) AssociateUserIDWithShort(userID uint32, short st
 	if err != nil {
 		log.Fatal(err)
 	}
-	savedURLs := StructStorage{}
+	savedURLs := JSONStructure{}
 	if len(data) == 0 {
 		data = []byte("{}")
 	}
 	json.Unmarshal(data, &savedURLs)
-	savedURLs.UserIDToShort[userID] = append(savedURLs.UserIDToShort[userID], short)
+	if savedURLs.UserIDToShort == nil {
+		savedURLs.UserIDToShort = make(map[uint32][]string)
+	}
+	userIDToShort, exists := savedURLs.UserIDToShort[userID]
+	if !exists {
+		userIDToShort = make([]string, 0)
+	}
+	savedURLs.UserIDToShort[userID] = append(userIDToShort, short)
 	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
 	if err != nil {
 		log.Fatal(err)
@@ -130,7 +149,7 @@ func (storage *JSONFileStorage) GetURLsByUserID(userID uint32) []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	savedURLs := StructStorage{}
+	savedURLs := JSONStructure{}
 	if len(data) == 0 {
 		data = []byte("{}")
 	}

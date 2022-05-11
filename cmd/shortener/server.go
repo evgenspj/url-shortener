@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,13 +37,11 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Println("Can't read request body")
 		http.Error(w, "Can't read request body", http.StatusBadRequest)
 		return
 	}
 	url, err := url.ParseRequestURI(string(data))
 	if err != nil {
-		log.Println("Invalid url received")
 		http.Error(w, "Invalid url received", http.StatusBadRequest)
 		return
 	}
@@ -85,7 +81,6 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 	if contentType := r.Header.Get("Content-Type"); contentType != "application/json" {
-		log.Println("Bad Content-Type")
 		http.Error(w, "Bad Content-Type", http.StatusBadRequest)
 		return
 	}
@@ -97,7 +92,6 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	url, err := url.ParseRequestURI(data.URL)
 	if err != nil {
-		log.Println("Invalid url received")
 		http.Error(w, "Invalid url received", http.StatusBadRequest)
 		return
 	}
@@ -118,10 +112,7 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
-	cookiesToWrite, exists := w.Header()["Set-Cookie"]
-	if !exists {
-		panic(fmt.Errorf("need to turn on user_token cookie middleware"))
-	}
+	cookiesToWrite := w.Header()["Set-Cookie"]
 	userToken := strings.Split(cookiesToWrite[0], "=")[1]
 	userID := app.GetUserIDFromToken(userToken)
 	shortUrls := h.storage.GetURLsByUserID(userID)
