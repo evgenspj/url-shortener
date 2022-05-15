@@ -1,15 +1,11 @@
 package app
 
 import (
-	"bytes"
-	"encoding/base64"
-	"strings"
+	"crypto/md5"
+	"encoding/hex"
 )
 
 func GenShort(url string) string {
-	var buf bytes.Buffer
-	encoder := base64.NewEncoder(base64.RawURLEncoding, &buf)
-	encoder.Write([]byte(url))
-	encoded := buf.String()
-	return strings.ToLower(encoded[:len(encoded)/2])
+	md5Sum := md5.Sum([]byte(url))
+	return hex.EncodeToString(md5Sum[:])
 }

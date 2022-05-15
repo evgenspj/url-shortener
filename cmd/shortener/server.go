@@ -49,9 +49,7 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	longURL := url.String()
 	short := app.GenShort(longURL)
 	h.storage.SaveShort(short, longURL)
-	if cookiesToWrite, exists := w.Header()["Set-Cookie"]; exists {
-		userToken := strings.Split(cookiesToWrite[0], "=")[1]
-		userID := app.GetUserIDFromToken(userToken)
+	if userID, exists := getUserTokenFromWriter(w); exists {
 		h.storage.AssociateUserIDWithShort(userID, short)
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -99,9 +97,7 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	longURL := url.String()
 	short := app.GenShort(longURL)
 	h.storage.SaveShort(short, longURL)
-	if cookiesToWrite, exists := w.Header()["Set-Cookie"]; exists {
-		userToken := strings.Split(cookiesToWrite[0], "=")[1]
-		userID := app.GetUserIDFromToken(userToken)
+	if userID, exists := getUserTokenFromWriter(w); exists {
 		h.storage.AssociateUserIDWithShort(userID, short)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -112,9 +108,7 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
-	cookiesToWrite := w.Header()["Set-Cookie"]
-	userToken := strings.Split(cookiesToWrite[0], "=")[1]
-	userID := app.GetUserIDFromToken(userToken)
+	userID, _ := getUserTokenFromWriter(w)
 	shortUrls := h.storage.GetURLsByUserID(userID)
 	response := make([]UserURLsResponseStruct, 0)
 	for _, shortURL := range shortUrls {

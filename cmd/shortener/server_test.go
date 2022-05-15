@@ -305,24 +305,30 @@ func TestShortenHandlerJSON(t *testing.T) {
 func TestUserURLs(t *testing.T) {
 	type want struct {
 		code int
-		urls []string
+		urls map[string]string
 	}
 	userID := genUserID()
 	userToken := genUserTokenByID(userID)
 	wrongToken := "loremipsum"
+	longURL := "http://yandex.ru"
+	shortURL := app.GenShort(longURL)
 	tests := []struct {
-		name      string
-		userID    uint32
-		userToken string
-		want      want
+		name          string
+		userID        uint32
+		userToken     string
+		shortToLong   map[string]string
+		userIDToShort map[uint32][]string
+		want          want
 	}{
 		{
-			name:      "simple positive test",
-			userID:    userID,
-			userToken: userToken,
+			name:          "simple positive test",
+			userID:        userID,
+			shortToLong:   map[string]string{shortURL: longURL},
+			userIDToShort: map[uint32][]string{userID: {shortURL}},
+			userToken:     userToken,
 			want: want{
 				code: 200,
-				urls: []string{app.GenShort("http://yandex.ru")},
+				urls: map[string]string{shortURL: longURL},
 			},
 		},
 		{
@@ -331,7 +337,6 @@ func TestUserURLs(t *testing.T) {
 			userToken: wrongToken,
 			want: want{
 				code: 204,
-				urls: []string{app.GenShort("http://yandex.ru")},
 			},
 		},
 		{
@@ -340,7 +345,6 @@ func TestUserURLs(t *testing.T) {
 			userToken: userToken,
 			want: want{
 				code: 204,
-				urls: []string{},
 			},
 		},
 	}
@@ -348,8 +352,8 @@ func TestUserURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
 				storage: &app.StructStorage{
-					ShortToLong:   make(map[string]string),
-					UserIDToShort: map[uint32][]string{tt.userID: tt.want.urls},
+					ShortToLong:   tt.shortToLong,
+					UserIDToShort: tt.userIDToShort,
 				},
 				baseServerURL: defaultBaseURL,
 			}
@@ -371,7 +375,9 @@ func TestUserURLs(t *testing.T) {
 			if len(tt.want.urls) > 0 {
 				respSchema := make([]UserURLsResponseStruct, 0)
 				json.NewDecoder(resp.Body).Decode(&respSchema)
-				// assert.Equal(t, 1, len(respSchema))
+				assert.Equal(t, 1, len(respSchema))
+				assert.Equal(t, shortURL, respSchema[0].ShortURL)
+				assert.Equal(t, longURL, respSchema[0].LongURL)
 			}
 		})
 	}
