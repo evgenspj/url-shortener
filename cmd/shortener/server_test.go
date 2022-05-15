@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -108,11 +109,14 @@ func TestGetFromShortHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
-				storage:       &app.StructStorage{ShortToLong: make(map[string]string)},
+				storage: &app.StructStorage{
+					ShortToLong:   make(map[string]string),
+					UserIDToShort: make(map[uint32][]string),
+				},
 				baseServerURL: defaultBaseURL,
 			}
 			for short, long := range tt.storedURLs {
-				handler.storage.SaveShort(short, long)
+				handler.storage.SaveShort(context.Background(), short, long, genUserID())
 			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))

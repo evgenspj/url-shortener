@@ -48,10 +48,8 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 
 	longURL := url.String()
 	short := app.GenShort(longURL)
-	h.storage.SaveShort(short, longURL)
-	if userID, exists := getUserTokenFromWriter(w); exists {
-		h.storage.AssociateUserIDWithShort(userID, short)
-	}
+	userID := getUserTokenFromWriter(w)
+	h.storage.SaveShort(r.Context(), short, longURL, userID)
 	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	w.Write([]byte(shortURL))
@@ -63,7 +61,7 @@ func (h *Handler) GetFromShortHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	short := chi.URLParam(r, "ID")
-	longURL, exists := h.storage.GetURLFromShort(short)
+	longURL, exists := h.storage.GetURLFromShort(r.Context(), short)
 	if !exists {
 		http.Error(w, "No such short url", http.StatusNotFound)
 		return
@@ -96,10 +94,8 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 	longURL := url.String()
 	short := app.GenShort(longURL)
-	h.storage.SaveShort(short, longURL)
-	if userID, exists := getUserTokenFromWriter(w); exists {
-		h.storage.AssociateUserIDWithShort(userID, short)
-	}
+	userID := getUserTokenFromWriter(w)
+	h.storage.SaveShort(r.Context(), short, longURL, userID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
@@ -108,18 +104,17 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
-	userID, _ := getUserTokenFromWriter(w)
-	shortURLIDs := h.storage.GetURLsByUserID(userID)
+	userID := getUserTokenFromWriter(w)
+	shortURLIDs := h.storage.GetURLsByUserID(r.Context(), userID)
 	response := make([]UserURLsResponseStruct, 0)
 	for _, shortURLId := range shortURLIDs {
 		shortURL := strings.Join([]string{h.baseServerURL, shortURLId}, "/")
-		longURL, _ := h.storage.GetURLFromShort(shortURLId)
+		longURL, _ := h.storage.GetURLFromShort(r.Context(), shortURLId)
 		item := UserURLsResponseStruct{shortURL, longURL}
 		response = append(response, item)
 	}
 
 	encoder := json.NewEncoder(w)
-
 	w.Header().Set("Content-Type", "application/json")
 	if len(response) > 0 {
 		w.WriteHeader(http.StatusOK)
@@ -127,4 +122,17 @@ func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 	encoder.Encode(response)
+}
+
+func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
+	if pgStorage, isPgStorage := h.storage.(*app.PostgresStorage); !isPgStorage {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		err := pgStorage.PingContext(r.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+	}
 }

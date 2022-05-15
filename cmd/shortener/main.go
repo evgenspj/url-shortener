@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"flag"
 	"log"
 	"net/http"
@@ -8,6 +10,7 @@ import (
 	"github.com/caarlos0/env/v6"
 	"github.com/evgenspj/url-shortener/internal/app"
 	"github.com/go-chi/chi/v5"
+	_ "github.com/jackc/pgx/stdlib"
 )
 
 func NewRouter(handler *Handler) chi.Router {
@@ -16,6 +19,7 @@ func NewRouter(handler *Handler) chi.Router {
 	r.Post("/api/shorten", handler.ShortenHandlerJSON)
 	r.Get("/api/user/urls", handler.UserURLs)
 	r.Get("/{ID}", handler.GetFromShortHandler)
+	r.Get("/ping", handler.PingHandler)
 	return r
 }
 
@@ -28,6 +32,7 @@ type EnvConfig struct {
 	BaseURL         string `env:"BASE_URL"`
 	ServerAddress   string `env:"SERVER_ADDRESS"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
+	PostgresConStr  string `env:"DATABASE_DSN"`
 }
 
 func main() {
@@ -35,6 +40,7 @@ func main() {
 	argServerAddress := flag.String("a", "", "usage")
 	argBaseURL := flag.String("b", "", "usage")
 	argFileStoragePath := flag.String("f", "", "usage")
+	argPostgresConStr := flag.String("d", "", "usage")
 	flag.Parse()
 
 	// environment variables
@@ -66,8 +72,30 @@ func main() {
 
 	var storage app.Storage
 	switch {
+	case len(*argPostgresConStr) > 0:
+		db, err := sql.Open("pgx", *argPostgresConStr)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		dbStorage := &app.PostgresStorage{Db: db}
+		if err := dbStorage.Init(context.Background()); err != nil {
+			panic(err)
+		}
+		storage = dbStorage
 	case len(*argFileStoragePath) > 0:
 		storage = &app.JSONFileStorage{Filename: *argFileStoragePath}
+	case len(envCfg.PostgresConStr) > 0:
+		db, err := sql.Open("pgx", envCfg.PostgresConStr)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		dbStorage := &app.PostgresStorage{Db: db}
+		if err := dbStorage.Init(context.Background()); err != nil {
+			panic(err)
+		}
+		storage = dbStorage
 	case len(envCfg.FileStoragePath) > 0:
 		storage = &app.JSONFileStorage{Filename: envCfg.FileStoragePath}
 	default:
