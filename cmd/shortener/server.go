@@ -109,10 +109,11 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
 	userID, _ := getUserTokenFromWriter(w)
-	shortUrls := h.storage.GetURLsByUserID(userID)
+	shortURLIDs := h.storage.GetURLsByUserID(userID)
 	response := make([]UserURLsResponseStruct, 0)
-	for _, shortURL := range shortUrls {
-		longURL, _ := h.storage.GetURLFromShort(shortURL)
+	for _, shortURLId := range shortURLIDs {
+		shortURL := strings.Join([]string{h.baseServerURL, shortURLId}, "/")
+		longURL, _ := h.storage.GetURLFromShort(shortURLId)
 		item := UserURLsResponseStruct{shortURL, longURL}
 		response = append(response, item)
 	}

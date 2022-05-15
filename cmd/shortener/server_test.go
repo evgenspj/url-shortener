@@ -311,7 +311,7 @@ func TestUserURLs(t *testing.T) {
 	userToken := genUserTokenByID(userID)
 	wrongToken := "loremipsum"
 	longURL := "http://yandex.ru"
-	shortURL := app.GenShort(longURL)
+	shortURLId := app.GenShort(longURL)
 	tests := []struct {
 		name          string
 		userID        uint32
@@ -323,12 +323,12 @@ func TestUserURLs(t *testing.T) {
 		{
 			name:          "simple positive test",
 			userID:        userID,
-			shortToLong:   map[string]string{shortURL: longURL},
-			userIDToShort: map[uint32][]string{userID: {shortURL}},
+			shortToLong:   map[string]string{shortURLId: longURL},
+			userIDToShort: map[uint32][]string{userID: {shortURLId}},
 			userToken:     userToken,
 			want: want{
 				code: 200,
-				urls: map[string]string{shortURL: longURL},
+				urls: map[string]string{shortURLId: longURL},
 			},
 		},
 		{
@@ -376,6 +376,7 @@ func TestUserURLs(t *testing.T) {
 				respSchema := make([]UserURLsResponseStruct, 0)
 				json.NewDecoder(resp.Body).Decode(&respSchema)
 				assert.Equal(t, 1, len(respSchema))
+				shortURL := strings.Join([]string{handler.baseServerURL, shortURLId}, "/")
 				assert.Equal(t, shortURL, respSchema[0].ShortURL)
 				assert.Equal(t, longURL, respSchema[0].LongURL)
 			}
