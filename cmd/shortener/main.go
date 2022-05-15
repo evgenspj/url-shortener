@@ -78,7 +78,7 @@ func main() {
 			panic(err)
 		}
 		defer db.Close()
-		dbStorage := &app.PostgresStorage{Db: db}
+		dbStorage := &app.PostgresStorage{DB: db}
 		if err := dbStorage.Init(context.Background()); err != nil {
 			panic(err)
 		}
@@ -91,7 +91,7 @@ func main() {
 			panic(err)
 		}
 		defer db.Close()
-		dbStorage := &app.PostgresStorage{Db: db}
+		dbStorage := &app.PostgresStorage{DB: db}
 		if err := dbStorage.Init(context.Background()); err != nil {
 			panic(err)
 		}

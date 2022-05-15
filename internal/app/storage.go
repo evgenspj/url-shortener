@@ -32,7 +32,7 @@ type JSONFileStorage struct {
 }
 
 type PostgresStorage struct {
-	Db *sql.DB
+	DB *sql.DB
 }
 
 func (storage *StructStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
@@ -134,7 +134,7 @@ func (storage *JSONFileStorage) GetURLsByUserID(ctx context.Context, userID uint
 }
 
 func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
-	_, err := storage.Db.ExecContext(
+	_, err := storage.DB.ExecContext(
 		ctx,
 		"INSERT INTO short_urls (short_url, long_url, user_id) VALUES($1, $2, $3)",
 		short,
@@ -147,7 +147,7 @@ func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, lon
 }
 
 func (storage *PostgresStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
-	row := storage.Db.QueryRowContext(
+	row := storage.DB.QueryRowContext(
 		ctx,
 		"SELECT long_url FROM short_urls WHERE short_url = $1",
 		short,
@@ -160,7 +160,7 @@ func (storage *PostgresStorage) GetURLFromShort(ctx context.Context, short strin
 }
 
 func (storage *PostgresStorage) GetURLsByUserID(ctx context.Context, userID uint32) []string {
-	rows, err := storage.Db.QueryContext(
+	rows, err := storage.DB.QueryContext(
 		ctx,
 		"SELECT short_url FROM short_urls WHERE user_id = $1",
 		userID,
@@ -173,17 +173,24 @@ func (storage *PostgresStorage) GetURLsByUserID(ctx context.Context, userID uint
 	for rows.Next() {
 		var short string
 		err = rows.Scan(&short)
+		if err != nil {
+			panic(err)
+		}
 		shorts = append(shorts, short)
+	}
+	err = rows.Err()
+	if err != nil {
+		panic(err)
 	}
 	return shorts
 }
 
 func (storage *PostgresStorage) PingContext(ctx context.Context) error {
-	return storage.Db.PingContext(ctx)
+	return storage.DB.PingContext(ctx)
 }
 
 func (storage *PostgresStorage) Init(ctx context.Context) error {
-	_, err := storage.Db.ExecContext(
+	_, err := storage.DB.ExecContext(
 		ctx,
 		"CREATE TABLE IF NOT EXISTS short_urls (short_url CHAR(32) NOT NULL, long_url TEXT NOT NULL, user_id BIGINT)",
 	)
