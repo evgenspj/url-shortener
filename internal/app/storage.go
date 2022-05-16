@@ -7,14 +7,17 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"sync"
+
+	"github.com/jackc/pgerrcode"
 )
 
 type Storage interface {
-	SaveShort(ctx context.Context, short string, longURL string, userID uint32)
+	SaveShort(ctx context.Context, short string, longURL string, userID uint32) error
 	GetURLFromShort(ctx context.Context, short string) (string, bool)
 	GetURLsByUserID(ctx context.Context, userID uint32) []string
-	SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32)
+	SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) error
 }
 
 type StructStorage struct {
@@ -36,15 +39,27 @@ type PostgresStorage struct {
 	DB *sql.DB
 }
 
-func (storage *StructStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
+type DuplicateError struct{}
+
+func (e *DuplicateError) Error() string {
+	return "long url duplicate error"
+}
+
+func (storage *StructStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) error {
 	storage.mu.Lock()
 	defer storage.mu.Unlock()
-	storage.ShortToLong[short] = longURL
+	_, exists := storage.ShortToLong[short]
+	if exists {
+		return &DuplicateError{}
+	} else {
+		storage.ShortToLong[short] = longURL
+	}
 	userIDToShort, exists := storage.UserIDToShort[userID]
 	if !exists {
 		userIDToShort = make([]string, 0)
 	}
 	storage.UserIDToShort[userID] = append(userIDToShort, short)
+	return nil
 }
 
 func (storage *StructStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
@@ -61,7 +76,7 @@ func (storage *StructStorage) GetURLsByUserID(ctx context.Context, userID uint32
 	return shortURLS
 }
 
-func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) error {
 	storage.mu.Lock()
 	defer storage.mu.Unlock()
 	userIDToShort, exists := storage.UserIDToShort[userID]
@@ -69,12 +84,16 @@ func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong ma
 		userIDToShort = make([]string, 0)
 	}
 	for short, long := range shortToLong {
+		if _, exists := storage.ShortToLong[short]; exists {
+			return &DuplicateError{}
+		}
 		storage.ShortToLong[short] = long
 		storage.UserIDToShort[userID] = append(userIDToShort, short)
 	}
+	return nil
 }
 
-func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
+func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) error {
 	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
 	if err != nil {
 		log.Fatal(err)
@@ -92,6 +111,9 @@ func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, lon
 	if savedURLs.ShortToLong == nil {
 		savedURLs.ShortToLong = make(map[string]string)
 	}
+	if _, exists := savedURLs.ShortToLong[short]; exists {
+		return &DuplicateError{}
+	}
 	savedURLs.ShortToLong[short] = longURL
 	if savedURLs.UserIDToShort == nil {
 		savedURLs.UserIDToShort = make(map[uint32][]string)
@@ -107,6 +129,7 @@ func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, lon
 	}
 	file.Seek(0, 0)
 	file.Write(updatedURLsJSON)
+	return nil
 }
 
 func (storage *JSONFileStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
@@ -147,7 +170,7 @@ func (storage *JSONFileStorage) GetURLsByUserID(ctx context.Context, userID uint
 	return shortURLs
 }
 
-func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) error {
 	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
 	if err != nil {
 		log.Fatal(err)
@@ -171,6 +194,8 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	userIDToShort, exists := savedURLs.UserIDToShort[userID]
 	if !exists {
 		userIDToShort = make([]string, 0)
+	} else {
+		return &DuplicateError{}
 	}
 	for short, long := range shortToLong {
 		savedURLs.ShortToLong[short] = long
@@ -183,9 +208,10 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	}
 	file.Seek(0, 0)
 	file.Write(updatedURLsJSON)
+	return nil
 }
 
-func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
+func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) error {
 	_, err := storage.DB.ExecContext(
 		ctx,
 		"INSERT INTO short_urls (short_url, long_url, user_id) VALUES($1, $2, $3)",
@@ -194,8 +220,12 @@ func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, lon
 		userID,
 	)
 	if err != nil {
-		panic(err)
+		if strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
+			return &DuplicateError{}
+		}
+		return err
 	}
+	return nil
 }
 
 func (storage *PostgresStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
@@ -241,7 +271,7 @@ func (storage *PostgresStorage) PingContext(ctx context.Context) error {
 	return storage.DB.PingContext(ctx)
 }
 
-func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) error {
 	tx, err := storage.DB.Begin()
 	if err != nil {
 		panic(err)
@@ -249,21 +279,25 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, "INSERT INTO short_urls(short_url, long_url, user_id) VALUES($1, $2, $3)")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer stmt.Close()
 	for short, long := range shortToLong {
 		if _, err := stmt.ExecContext(ctx, short, long, userID); err != nil {
-			panic(err)
+			if strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
+				return &DuplicateError{}
+			}
+			return err
 		}
 	}
 	tx.Commit()
+	return nil
 }
 
 func (storage *PostgresStorage) Init(ctx context.Context) error {
 	_, err := storage.DB.ExecContext(
 		ctx,
-		"CREATE TABLE IF NOT EXISTS short_urls (short_url CHAR(32) NOT NULL, long_url TEXT NOT NULL, user_id BIGINT)",
+		"CREATE TABLE IF NOT EXISTS short_urls (short_url CHAR(32) NOT NULL, long_url TEXT NOT NULL UNIQUE, user_id BIGINT)",
 	)
 	return err
 }

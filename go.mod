@@ -6,6 +6,7 @@ require (
 	github.com/caarlos0/env/v6 v6.9.1 // indirect
 	github.com/davecgh/go-spew v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.0.7 // indirect
+	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa // indirect
 	github.com/jackc/pgx v3.6.2+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

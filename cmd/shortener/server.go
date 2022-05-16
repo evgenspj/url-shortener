@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -59,7 +60,16 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	longURL := url.String()
 	short := app.GenShort(longURL)
 	userID := getUserTokenFromWriter(w)
-	h.storage.SaveShort(r.Context(), short, longURL, userID)
+	err = h.storage.SaveShort(r.Context(), short, longURL, userID)
+	var duplicateErr *app.DuplicateError
+	if err != nil {
+		if errors.As(err, &duplicateErr) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		} else {
+			panic(err)
+		}
+	}
 	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	w.Write([]byte(shortURL))
@@ -105,7 +115,16 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	longURL := url.String()
 	short := app.GenShort(longURL)
 	userID := getUserTokenFromWriter(w)
-	h.storage.SaveShort(r.Context(), short, longURL, userID)
+	err = h.storage.SaveShort(r.Context(), short, longURL, userID)
+	var duplicateErr *app.DuplicateError
+	if err != nil {
+		if errors.As(err, &duplicateErr) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		} else {
+			panic(err)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
@@ -177,7 +196,16 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 		shortToLong[shortURL] = longURL.String()
 	}
 
-	h.storage.SaveShortMulti(r.Context(), shortToLong, userID)
+	err := h.storage.SaveShortMulti(r.Context(), shortToLong, userID)
+	var duplicateErr *app.DuplicateError
+	if err != nil {
+		if errors.As(err, &duplicateErr) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		} else {
+			panic(err)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	respData := []ShortenBatchHandlerJSONResponse{}

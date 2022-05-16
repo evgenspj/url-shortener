@@ -150,6 +150,7 @@ func TestShortenHandler(t *testing.T) {
 		name          string
 		requestBody   string
 		requestMethod string
+		urlsInDB      []string
 		want          want
 	}{
 		{
@@ -177,12 +178,27 @@ func TestShortenHandler(t *testing.T) {
 				shortURLInBody: false,
 			},
 		},
+		{
+			name:          "duplicate url",
+			requestBody:   "http://duplicate.com",
+			requestMethod: http.MethodPost,
+			urlsInDB:      []string{"http://duplicate.com"},
+			want: want{
+				code:           http.StatusConflict,
+				shortURLInBody: false,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			shortToLong := make(map[string]string)
+			for _, long := range tt.urlsInDB {
+				short := app.GenShort(long)
+				shortToLong[short] = long
+			}
 			handler := Handler{
 				storage: &app.StructStorage{
-					ShortToLong:   make(map[string]string),
+					ShortToLong:   shortToLong,
 					UserIDToShort: make(map[uint32][]string),
 				},
 				baseServerURL: defaultBaseURL,
@@ -224,6 +240,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 		testURL        string
 		requestMethod  string
 		requestHeaders map[string][]string
+		urlsInDB       []string
 		want           want
 	}{
 		{
@@ -263,12 +280,27 @@ func TestShortenHandlerJSON(t *testing.T) {
 				shortURLInBody: false,
 			},
 		},
+		{
+			name:          "duplicate url",
+			testURL:       "http://duplicate.com",
+			requestMethod: http.MethodPost,
+			urlsInDB:      []string{"http://duplicate.com"},
+			want: want{
+				code:           http.StatusConflict,
+				shortURLInBody: false,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			shortToLong := make(map[string]string)
+			for _, long := range tt.urlsInDB {
+				short := app.GenShort(long)
+				shortToLong[short] = long
+			}
 			handler := Handler{
 				storage: &app.StructStorage{
-					ShortToLong:   make(map[string]string),
+					ShortToLong:   shortToLong,
 					UserIDToShort: make(map[uint32][]string),
 				},
 				baseServerURL: defaultBaseURL,
@@ -396,6 +428,7 @@ func TestShortenBatchHandler(t *testing.T) {
 	tests := []struct {
 		name        string
 		requestData ShortenBatchHandlerJSONRequest
+		urlsInDB    []string
 		want        want
 	}{
 		{
@@ -417,12 +450,27 @@ func TestShortenBatchHandler(t *testing.T) {
 				code: http.StatusBadRequest,
 			},
 		},
+		{
+			name: "duplicate url",
+			requestData: ShortenBatchHandlerJSONRequest{
+				{CorrelationID: "id", OrginalURL: "http://duplicate.com"},
+			},
+			urlsInDB: []string{"http://duplicate.com"},
+			want: want{
+				code: http.StatusConflict,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			shortToLong := make(map[string]string)
+			for _, long := range tt.urlsInDB {
+				short := app.GenShort(long)
+				shortToLong[short] = long
+			}
 			handler := Handler{
 				storage: &app.StructStorage{
-					ShortToLong:   make(map[string]string),
+					ShortToLong:   shortToLong,
 					UserIDToShort: make(map[uint32][]string),
 				},
 				baseServerURL: defaultBaseURL,
