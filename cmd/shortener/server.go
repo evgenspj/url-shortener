@@ -65,12 +65,12 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
 			w.WriteHeader(http.StatusConflict)
-			return
 		} else {
 			panic(err)
 		}
+	} else {
+		w.WriteHeader(http.StatusCreated)
 	}
-	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	w.Write([]byte(shortURL))
 }
@@ -120,13 +120,13 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
 			w.WriteHeader(http.StatusConflict)
-			return
 		} else {
 			panic(err)
 		}
+	} else {
+		w.WriteHeader(http.StatusCreated)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	ret, _ := json.Marshal(ShortenHandlerJSONResponse{shortURL})
 	w.Write(ret)

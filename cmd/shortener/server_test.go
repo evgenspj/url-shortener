@@ -185,7 +185,7 @@ func TestShortenHandler(t *testing.T) {
 			urlsInDB:      []string{"http://duplicate.com"},
 			want: want{
 				code:           http.StatusConflict,
-				shortURLInBody: false,
+				shortURLInBody: true,
 			},
 		},
 	}
@@ -287,7 +287,7 @@ func TestShortenHandlerJSON(t *testing.T) {
 			urlsInDB:      []string{"http://duplicate.com"},
 			want: want{
 				code:           http.StatusConflict,
-				shortURLInBody: false,
+				shortURLInBody: true,
 			},
 		},
 	}

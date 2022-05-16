@@ -194,10 +194,11 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	userIDToShort, exists := savedURLs.UserIDToShort[userID]
 	if !exists {
 		userIDToShort = make([]string, 0)
-	} else {
-		return &DuplicateError{}
 	}
 	for short, long := range shortToLong {
+		if _, exists := savedURLs.ShortToLong[short]; exists {
+			return &DuplicateError{}
+		}
 		savedURLs.ShortToLong[short] = long
 		userIDToShort = append(userIDToShort, short)
 	}
