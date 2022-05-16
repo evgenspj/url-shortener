@@ -51,9 +51,8 @@ func (storage *StructStorage) SaveShort(ctx context.Context, short string, longU
 	_, exists := storage.ShortToLong[short]
 	if exists {
 		return &DuplicateError{}
-	} else {
-		storage.ShortToLong[short] = longURL
 	}
+	storage.ShortToLong[short] = longURL
 	userIDToShort, exists := storage.UserIDToShort[userID]
 	if !exists {
 		userIDToShort = make([]string, 0)
@@ -83,12 +82,16 @@ func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong ma
 	if !exists {
 		userIDToShort = make([]string, 0)
 	}
+	hasDuplicates := false
 	for short, long := range shortToLong {
 		if _, exists := storage.ShortToLong[short]; exists {
-			return &DuplicateError{}
+			hasDuplicates = true
 		}
 		storage.ShortToLong[short] = long
 		storage.UserIDToShort[userID] = append(userIDToShort, short)
+	}
+	if hasDuplicates {
+		return &DuplicateError{}
 	}
 	return nil
 }
@@ -195,9 +198,10 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	if !exists {
 		userIDToShort = make([]string, 0)
 	}
+	hasDuplicates := false
 	for short, long := range shortToLong {
 		if _, exists := savedURLs.ShortToLong[short]; exists {
-			return &DuplicateError{}
+			hasDuplicates = true
 		}
 		savedURLs.ShortToLong[short] = long
 		userIDToShort = append(userIDToShort, short)
@@ -209,6 +213,9 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	}
 	file.Seek(0, 0)
 	file.Write(updatedURLsJSON)
+	if hasDuplicates {
+		return &DuplicateError{}
+	}
 	return nil
 }
 
@@ -278,7 +285,7 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		panic(err)
 	}
 	defer tx.Rollback()
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO short_urls(short_url, long_url, user_id) VALUES($1, $2, $3)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO short_urls(short_url, long_url, user_id) VALUES($1, $2, $3) ON CONFLICT (long_url) DO NOTHING")
 	if err != nil {
 		return err
 	}
@@ -287,8 +294,9 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		if _, err := stmt.ExecContext(ctx, short, long, userID); err != nil {
 			if strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
 				return &DuplicateError{}
+			} else {
+				panic(err)
 			}
-			return err
 		}
 	}
 	tx.Commit()

@@ -439,6 +439,10 @@ func TestShortenBatchHandler(t *testing.T) {
 			},
 			want: want{
 				code: 201,
+				response: []ShortenBatchHandlerJSONResponse{
+					{CorrelationID: "some id", ShortURL: app.GenShort("https://yandex.ru")},
+					{CorrelationID: "other id", ShortURL: app.GenShort("https://google.com")},
+				},
 			},
 		},
 		{
@@ -458,6 +462,9 @@ func TestShortenBatchHandler(t *testing.T) {
 			urlsInDB: []string{"http://duplicate.com"},
 			want: want{
 				code: http.StatusConflict,
+				response: []ShortenBatchHandlerJSONResponse{
+					{CorrelationID: "id", ShortURL: app.GenShort("http://duplicate.com")},
+				},
 			},
 		},
 	}
@@ -491,24 +498,13 @@ func TestShortenBatchHandler(t *testing.T) {
 			defer resp.Body.Close()
 
 			require.Equal(t, tt.want.code, resp.StatusCode)
-			if tt.want.code == http.StatusOK {
+			if len(tt.want.response) == http.StatusOK {
 				respBody, err := io.ReadAll(resp.Body)
 				require.NoError(t, err)
 				bodyParsed := make([]ShortenBatchHandlerJSONResponse, 0)
 				err = json.Unmarshal(respBody, &bodyParsed)
 				require.NoError(t, err)
-				expected := make([]ShortenBatchHandlerJSONResponse, 0)
-				for _, item := range tt.requestData {
-					shortURL := strings.Join([]string{handler.baseServerURL, app.GenShort(item.OrginalURL)}, "/")
-					expected = append(
-						expected,
-						ShortenBatchHandlerJSONResponse{
-							CorrelationID: item.CorrelationID,
-							ShortURL:      shortURL,
-						},
-					)
-				}
-				require.Equal(t, bodyParsed, expected)
+				require.Equal(t, bodyParsed, tt.want.response)
 			}
 		})
 	}
