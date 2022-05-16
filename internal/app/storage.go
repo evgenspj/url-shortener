@@ -14,6 +14,7 @@ type Storage interface {
 	SaveShort(ctx context.Context, short string, longURL string, userID uint32)
 	GetURLFromShort(ctx context.Context, short string) (string, bool)
 	GetURLsByUserID(ctx context.Context, userID uint32) []string
+	SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32)
 }
 
 type StructStorage struct {
@@ -58,6 +59,19 @@ func (storage *StructStorage) GetURLsByUserID(ctx context.Context, userID uint32
 	defer storage.mu.Unlock()
 	shortURLS := storage.UserIDToShort[userID]
 	return shortURLS
+}
+
+func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+	storage.mu.Lock()
+	defer storage.mu.Unlock()
+	userIDToShort, exists := storage.UserIDToShort[userID]
+	if !exists {
+		userIDToShort = make([]string, 0)
+	}
+	for short, long := range shortToLong {
+		storage.ShortToLong[short] = long
+		storage.UserIDToShort[userID] = append(userIDToShort, short)
+	}
 }
 
 func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
@@ -133,6 +147,44 @@ func (storage *JSONFileStorage) GetURLsByUserID(ctx context.Context, userID uint
 	return shortURLs
 }
 
+func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(data) == 0 {
+		data = []byte("{}")
+	}
+	savedURLs := JSONStructure{}
+	json.Unmarshal(data, &savedURLs)
+	if savedURLs.ShortToLong == nil {
+		savedURLs.ShortToLong = make(map[string]string)
+	}
+	if savedURLs.UserIDToShort == nil {
+		savedURLs.UserIDToShort = make(map[uint32][]string)
+	}
+	userIDToShort, exists := savedURLs.UserIDToShort[userID]
+	if !exists {
+		userIDToShort = make([]string, 0)
+	}
+	for short, long := range shortToLong {
+		savedURLs.ShortToLong[short] = long
+		userIDToShort = append(userIDToShort, short)
+	}
+	savedURLs.UserIDToShort[userID] = userIDToShort
+	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	file.Seek(0, 0)
+	file.Write(updatedURLsJSON)
+}
+
 func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) {
 	_, err := storage.DB.ExecContext(
 		ctx,
@@ -187,6 +239,25 @@ func (storage *PostgresStorage) GetURLsByUserID(ctx context.Context, userID uint
 
 func (storage *PostgresStorage) PingContext(ctx context.Context) error {
 	return storage.DB.PingContext(ctx)
+}
+
+func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) {
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		panic(err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO short_urls(short_url, long_url, user_id) VALUES($1, $2, $3)")
+	if err != nil {
+		panic(err)
+	}
+	defer stmt.Close()
+	for short, long := range shortToLong {
+		if _, err := stmt.ExecContext(ctx, short, long, userID); err != nil {
+			panic(err)
+		}
+	}
+	tx.Commit()
 }
 
 func (storage *PostgresStorage) Init(ctx context.Context) error {

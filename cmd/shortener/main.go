@@ -20,6 +20,7 @@ func NewRouter(handler *Handler) chi.Router {
 	r.Get("/api/user/urls", handler.UserURLs)
 	r.Get("/{ID}", handler.GetFromShortHandler)
 	r.Get("/ping", handler.PingHandler)
+	r.Post("/api/shorten/batch", handler.ShortenBatchHandler)
 	return r
 }
 

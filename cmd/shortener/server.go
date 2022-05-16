@@ -29,6 +29,16 @@ type UserURLsResponseStruct struct {
 	LongURL  string `json:"original_url"`
 }
 
+type ShortenBatchHandlerJSONRequest []struct {
+	CorrelationID string `json:"correlation_id"`
+	OrginalURL    string `json:"original_url"`
+}
+
+type ShortenBatchHandlerJSONResponse struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
 func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)
@@ -135,4 +145,51 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}
 	}
+}
+
+func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST requests are allowed!", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	if contentType := r.Header.Get("Content-Type"); contentType != "application/json" {
+		http.Error(w, "Bad Content-Type", http.StatusBadRequest)
+		return
+	}
+	data := ShortenBatchHandlerJSONRequest{}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	userID := getUserTokenFromWriter(w)
+	correlationIDtoShort := make(map[string]string)
+	shortToLong := make(map[string]string)
+	for _, item := range data {
+		longURL, err := url.ParseRequestURI(item.OrginalURL)
+		if err != nil {
+			http.Error(w, "Invalid url received", http.StatusBadRequest)
+			return
+		}
+		shortURL := app.GenShort(longURL.String())
+		correlationIDtoShort[item.CorrelationID] = shortURL
+		shortToLong[shortURL] = longURL.String()
+	}
+
+	h.storage.SaveShortMulti(r.Context(), shortToLong, userID)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	respData := []ShortenBatchHandlerJSONResponse{}
+	for correlationID, shortURL := range correlationIDtoShort {
+		respData = append(
+			respData,
+			ShortenBatchHandlerJSONResponse{
+				CorrelationID: correlationID,
+				ShortURL:      strings.Join([]string{h.baseServerURL, shortURL}, "/"),
+			},
+		)
+	}
+	ret, _ := json.Marshal(respData)
+	w.Write(ret)
 }

@@ -387,3 +387,81 @@ func TestUserURLs(t *testing.T) {
 		})
 	}
 }
+
+func TestShortenBatchHandler(t *testing.T) {
+	type want struct {
+		code     int
+		response []ShortenBatchHandlerJSONResponse
+	}
+	tests := []struct {
+		name        string
+		requestData ShortenBatchHandlerJSONRequest
+		want        want
+	}{
+		{
+			name: "simple positive test",
+			requestData: ShortenBatchHandlerJSONRequest{
+				{CorrelationID: "some id", OrginalURL: "https://yandex.ru"},
+				{CorrelationID: "other id", OrginalURL: "https://google.com"},
+			},
+			want: want{
+				code: 201,
+			},
+		},
+		{
+			name: "invalid url",
+			requestData: ShortenBatchHandlerJSONRequest{
+				{CorrelationID: "id", OrginalURL: "invalidurl"},
+			},
+			want: want{
+				code: http.StatusBadRequest,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := Handler{
+				storage: &app.StructStorage{
+					ShortToLong:   make(map[string]string),
+					UserIDToShort: make(map[uint32][]string),
+				},
+				baseServerURL: defaultBaseURL,
+			}
+			r := NewRouter(&handler)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
+			defer ts.Close()
+			requestBody, _ := json.Marshal(tt.requestData)
+			reqArgs := testRequestArgs{
+				t:       t,
+				ts:      ts,
+				method:  http.MethodPost,
+				path:    "/api/shorten/batch",
+				body:    string(requestBody),
+				headers: map[string][]string{"Content-Type": {"application/json"}},
+			}
+			resp := testRequest(reqArgs)
+			defer resp.Body.Close()
+
+			require.Equal(t, tt.want.code, resp.StatusCode)
+			if tt.want.code == http.StatusOK {
+				respBody, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				bodyParsed := make([]ShortenBatchHandlerJSONResponse, 0)
+				err = json.Unmarshal(respBody, &bodyParsed)
+				require.NoError(t, err)
+				expected := make([]ShortenBatchHandlerJSONResponse, 0)
+				for _, item := range tt.requestData {
+					shortURL := strings.Join([]string{handler.baseServerURL, app.GenShort(item.OrginalURL)}, "/")
+					expected = append(
+						expected,
+						ShortenBatchHandlerJSONResponse{
+							CorrelationID: item.CorrelationID,
+							ShortURL:      shortURL,
+						},
+					)
+				}
+				require.Equal(t, bodyParsed, expected)
+			}
+		})
+	}
+}
