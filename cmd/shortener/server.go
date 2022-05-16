@@ -201,13 +201,13 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
 			w.WriteHeader(http.StatusConflict)
-			return
 		} else {
 			panic(err)
 		}
+	} else {
+		w.WriteHeader(http.StatusCreated)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	respData := []ShortenBatchHandlerJSONResponse{}
 	for correlationID, shortURL := range correlationIDtoShort {
 		respData = append(
@@ -218,6 +218,6 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 	}
-	ret, _ := json.Marshal(respData)
+	ret, _ := json.MarshalIndent(respData, "", "    ")
 	w.Write(ret)
 }

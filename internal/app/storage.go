@@ -86,10 +86,12 @@ func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong ma
 	for short, long := range shortToLong {
 		if _, exists := storage.ShortToLong[short]; exists {
 			hasDuplicates = true
+		} else {
+			userIDToShort = append(userIDToShort, short)
 		}
 		storage.ShortToLong[short] = long
-		storage.UserIDToShort[userID] = append(userIDToShort, short)
 	}
+	storage.UserIDToShort[userID] = userIDToShort
 	if hasDuplicates {
 		return &DuplicateError{}
 	}
@@ -202,9 +204,10 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	for short, long := range shortToLong {
 		if _, exists := savedURLs.ShortToLong[short]; exists {
 			hasDuplicates = true
+		} else {
+			userIDToShort = append(userIDToShort, short)
 		}
 		savedURLs.ShortToLong[short] = long
-		userIDToShort = append(userIDToShort, short)
 	}
 	savedURLs.UserIDToShort[userID] = userIDToShort
 	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
@@ -290,16 +293,24 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		return err
 	}
 	defer stmt.Close()
+	hasDuplicates := false
 	for short, long := range shortToLong {
-		if _, err := stmt.ExecContext(ctx, short, long, userID); err != nil {
-			if strings.Contains(err.Error(), pgerrcode.UniqueViolation) {
-				return &DuplicateError{}
-			} else {
-				panic(err)
-			}
+		res, err := stmt.ExecContext(ctx, short, long, userID)
+		if err != nil {
+			panic(err)
+		}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			panic(err)
+		}
+		if rowsAffected == 0 {
+			hasDuplicates = true
 		}
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if hasDuplicates {
+		return &DuplicateError{}
+	}
 	return nil
 }
 
