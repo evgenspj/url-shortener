@@ -308,6 +308,9 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		}
 	}
 	err = tx.Commit()
+	if err != nil {
+		panic(err)
+	}
 	if hasDuplicates {
 		return &DuplicateError{}
 	}

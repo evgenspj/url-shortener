@@ -62,16 +62,18 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	userID := getUserTokenFromWriter(w)
 	err = h.storage.SaveShort(r.Context(), short, longURL, userID)
 	var duplicateErr *app.DuplicateError
+	var respStatus int
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
-			w.WriteHeader(http.StatusConflict)
+			respStatus = http.StatusConflict
 		} else {
 			panic(err)
 		}
 	} else {
-		w.WriteHeader(http.StatusCreated)
+		respStatus = http.StatusCreated
 	}
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
+	w.WriteHeader(respStatus)
 	w.Write([]byte(shortURL))
 }
 
@@ -117,16 +119,18 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	userID := getUserTokenFromWriter(w)
 	err = h.storage.SaveShort(r.Context(), short, longURL, userID)
 	var duplicateErr *app.DuplicateError
+	var respStatus int
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
-			w.WriteHeader(http.StatusConflict)
+			respStatus = http.StatusConflict
 		} else {
 			panic(err)
 		}
 	} else {
-		w.WriteHeader(http.StatusCreated)
+		respStatus = http.StatusCreated
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(respStatus)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	ret, _ := json.Marshal(ShortenHandlerJSONResponse{shortURL})
 	w.Write(ret)
@@ -144,12 +148,14 @@ func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encoder := json.NewEncoder(w)
+	var respStatus int
 	w.Header().Set("Content-Type", "application/json")
 	if len(response) > 0 {
-		w.WriteHeader(http.StatusOK)
+		respStatus = http.StatusOK
 	} else {
-		w.WriteHeader(http.StatusNoContent)
+		respStatus = http.StatusNoContent
 	}
+	w.WriteHeader(respStatus)
 	encoder.Encode(response)
 }
 
@@ -198,16 +204,16 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	err := h.storage.SaveShortMulti(r.Context(), shortToLong, userID)
 	var duplicateErr *app.DuplicateError
+	var respStatus int
 	if err != nil {
 		if errors.As(err, &duplicateErr) {
-			w.WriteHeader(http.StatusConflict)
+			respStatus = http.StatusConflict
 		} else {
 			panic(err)
 		}
 	} else {
-		w.WriteHeader(http.StatusCreated)
+		respStatus = http.StatusCreated
 	}
-	w.Header().Set("Content-Type", "application/json")
 	respData := []ShortenBatchHandlerJSONResponse{}
 	for correlationID, shortURL := range correlationIDtoShort {
 		respData = append(
@@ -218,6 +224,8 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		)
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(respStatus)
 	ret, _ := json.MarshalIndent(respData, "", "    ")
 	w.Write(ret)
 }
