@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/evgenspj/url-shortener/internal/app"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -74,7 +75,10 @@ func (h *Handler) ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	w.WriteHeader(respStatus)
-	w.Write([]byte(shortURL))
+	_, err = w.Write([]byte(shortURL))
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (h *Handler) GetFromShortHandler(w http.ResponseWriter, r *http.Request) {
@@ -83,13 +87,16 @@ func (h *Handler) GetFromShortHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	short := chi.URLParam(r, "ID")
-	longURL, exists := h.storage.GetURLFromShort(r.Context(), short)
+	urlData, exists := h.storage.GetURLFromShort(r.Context(), short)
 	if !exists {
 		http.Error(w, "No such short url", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, longURL, http.StatusTemporaryRedirect)
-
+	if urlData.Deleted {
+		http.Error(w, "Url was deleted", http.StatusGone)
+		return
+	}
+	http.Redirect(w, r, urlData.Long, http.StatusTemporaryRedirect)
 }
 
 func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +140,10 @@ func (h *Handler) ShortenHandlerJSON(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(respStatus)
 	shortURL := strings.Join([]string{h.baseServerURL, short}, "/")
 	ret, _ := json.Marshal(ShortenHandlerJSONResponse{shortURL})
-	w.Write(ret)
+	_, err = w.Write(ret)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
@@ -142,21 +152,22 @@ func (h *Handler) UserURLs(w http.ResponseWriter, r *http.Request) {
 	response := make([]UserURLsResponseStruct, 0)
 	for _, shortURLId := range shortURLIDs {
 		shortURL := strings.Join([]string{h.baseServerURL, shortURLId}, "/")
-		longURL, _ := h.storage.GetURLFromShort(r.Context(), shortURLId)
-		item := UserURLsResponseStruct{shortURL, longURL}
+		urlData, _ := h.storage.GetURLFromShort(r.Context(), shortURLId)
+		item := UserURLsResponseStruct{shortURL, urlData.Long}
 		response = append(response, item)
 	}
 
 	encoder := json.NewEncoder(w)
-	var respStatus int
 	w.Header().Set("Content-Type", "application/json")
 	if len(response) > 0 {
-		respStatus = http.StatusOK
+		w.WriteHeader(http.StatusOK)
+		err := encoder.Encode(response)
+		if err != nil {
+			panic(err)
+		}
 	} else {
-		respStatus = http.StatusNoContent
+		w.WriteHeader(http.StatusNoContent)
 	}
-	w.WriteHeader(respStatus)
-	encoder.Encode(response)
 }
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
@@ -227,5 +238,26 @@ func (h *Handler) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(respStatus)
 	ret, _ := json.MarshalIndent(respData, "", "    ")
-	w.Write(ret)
+	_, err = w.Write(ret)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	if contentType := r.Header.Get("Content-Type"); contentType != "application/json" {
+		http.Error(w, "Bad Content-Type", http.StatusBadRequest)
+		return
+	}
+	urlsToDelete := []string{}
+
+	if err := json.NewDecoder(r.Body).Decode(&urlsToDelete); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	userID := getUserTokenFromWriter(w)
+	go h.storage.DeleteUserURLs(userID, urlsToDelete)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 }

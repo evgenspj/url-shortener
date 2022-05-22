@@ -39,7 +39,10 @@ func gzipHandle(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
-				io.WriteString(w, err.Error())
+				_, err = io.WriteString(w, err.Error())
+				if err != nil {
+					panic(err)
+				}
 				return
 			}
 			defer gz.Close()
@@ -49,7 +52,10 @@ func gzipHandle(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
 			if err != nil {
-				io.WriteString(w, err.Error())
+				_, err := io.WriteString(w, err.Error())
+				if err != nil {
+					panic(err)
+				}
 				return
 			}
 			defer gz.Close()
