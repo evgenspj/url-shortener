@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/evgenspj/url-shortener/internal/app"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,14 +61,14 @@ func TestGetFromShortHandler(t *testing.T) {
 		name          string
 		request       string
 		requestMethod string
-		storedURLs    map[string]string
+		storedURLs    map[string]app.URLDataSructure
 		want          want
 	}{
 		{
 			name:    "simple positive test",
 			request: "/loremid",
-			storedURLs: map[string]string{
-				"loremid": "http://example.com",
+			storedURLs: map[string]app.URLDataSructure{
+				"loremid": {Long: "http://example.com"},
 			},
 			want: want{
 				code:           http.StatusTemporaryRedirect,
@@ -78,31 +78,38 @@ func TestGetFromShortHandler(t *testing.T) {
 		{
 			name:       "wrong id",
 			request:    "/no-such-id",
-			storedURLs: map[string]string{},
+			storedURLs: map[string]app.URLDataSructure{},
 			want: want{
-				code:           http.StatusNotFound,
-				locationHeader: "",
+				code: http.StatusNotFound,
 			},
 		},
 		{
 			name:       "wrong url",
 			request:    "/someid/something/else",
-			storedURLs: map[string]string{},
+			storedURLs: map[string]app.URLDataSructure{},
 			want: want{
-				code:           http.StatusNotFound,
-				locationHeader: "",
+				code: http.StatusNotFound,
 			},
 		},
 		{
 			name:          "disallowed method",
 			request:       "/loremid",
 			requestMethod: http.MethodPost,
-			storedURLs: map[string]string{
-				"loremid": "http://example.com",
+			storedURLs: map[string]app.URLDataSructure{
+				"loremid": {Long: "http://example.com"},
 			},
 			want: want{
-				code:           http.StatusMethodNotAllowed,
-				locationHeader: "",
+				code: http.StatusMethodNotAllowed,
+			},
+		},
+		{
+			name:    "deleted url",
+			request: "/loremid",
+			storedURLs: map[string]app.URLDataSructure{
+				"loremid": {Long: "http://example.com", Deleted: true},
+			},
+			want: want{
+				code: http.StatusGone,
 			},
 		},
 	}
@@ -110,13 +117,10 @@ func TestGetFromShortHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := Handler{
 				storage: &app.StructStorage{
-					ShortToLong:   make(map[string]string),
+					ShortToLong:   tt.storedURLs,
 					UserIDToShort: make(map[uint32][]string),
 				},
 				baseServerURL: defaultBaseURL,
-			}
-			for short, long := range tt.storedURLs {
-				handler.storage.SaveShort(context.Background(), short, long, genUserID())
 			}
 			r := NewRouter(&handler)
 			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
@@ -191,10 +195,10 @@ func TestShortenHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortToLong := make(map[string]string)
+			shortToLong := make(map[string]app.URLDataSructure)
 			for _, long := range tt.urlsInDB {
 				short := app.GenShort(long)
-				shortToLong[short] = long
+				shortToLong[short] = app.URLDataSructure{Long: long}
 			}
 			handler := Handler{
 				storage: &app.StructStorage{
@@ -293,10 +297,10 @@ func TestShortenHandlerJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortToLong := make(map[string]string)
+			shortToLong := make(map[string]app.URLDataSructure)
 			for _, long := range tt.urlsInDB {
 				short := app.GenShort(long)
-				shortToLong[short] = long
+				shortToLong[short] = app.URLDataSructure{Long: long}
 			}
 			handler := Handler{
 				storage: &app.StructStorage{
@@ -352,14 +356,14 @@ func TestUserURLs(t *testing.T) {
 		name          string
 		userID        uint32
 		userToken     string
-		shortToLong   map[string]string
+		shortToLong   map[string]app.URLDataSructure
 		userIDToShort map[uint32][]string
 		want          want
 	}{
 		{
 			name:          "simple positive test",
 			userID:        userID,
-			shortToLong:   map[string]string{shortURLId: longURL},
+			shortToLong:   map[string]app.URLDataSructure{shortURLId: app.URLDataSructure{Long: longURL}},
 			userIDToShort: map[uint32][]string{userID: {shortURLId}},
 			userToken:     userToken,
 			want: want{
@@ -470,10 +474,10 @@ func TestShortenBatchHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shortToLong := make(map[string]string)
+			shortToLong := make(map[string]app.URLDataSructure)
 			for _, long := range tt.urlsInDB {
 				short := app.GenShort(long)
-				shortToLong[short] = long
+				shortToLong[short] = app.URLDataSructure{Long: long}
 			}
 			handler := Handler{
 				storage: &app.StructStorage{
@@ -506,6 +510,43 @@ func TestShortenBatchHandler(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, bodyParsed, tt.want.response)
 			}
+		})
+	}
+}
+
+func TestDeleteUserURLs(t *testing.T) {
+	tests := []struct {
+		name     string
+		wantCode int
+	}{
+		{
+			name:     "simple positive test",
+			wantCode: http.StatusAccepted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := Handler{
+				storage:       &app.StructStorage{},
+				baseServerURL: defaultBaseURL,
+			}
+			r := NewRouter(&handler)
+			ts := httptest.NewServer(middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
+			defer ts.Close()
+			body, _ := json.Marshal([]string{"a", "b"})
+			requestHeaders := map[string][]string{"Content-Type": {"application/json"}}
+			reqArgs := testRequestArgs{
+				t:       t,
+				ts:      ts,
+				method:  http.MethodDelete,
+				path:    "/api/user/urls",
+				body:    string(body),
+				headers: requestHeaders,
+			}
+			resp := testRequest(reqArgs)
+			defer resp.Body.Close()
+
+			require.Equal(t, tt.wantCode, resp.StatusCode)
 		})
 	}
 }

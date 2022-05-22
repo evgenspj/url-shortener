@@ -7,8 +7,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/caarlos0/env/v6"
 	"github.com/evgenspj/url-shortener/internal/app"
+
+	"github.com/caarlos0/env/v6"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/jackc/pgx/stdlib"
 )
@@ -21,6 +22,7 @@ func NewRouter(handler *Handler) chi.Router {
 	r.Get("/{ID}", handler.GetFromShortHandler)
 	r.Get("/ping", handler.PingHandler)
 	r.Post("/api/shorten/batch", handler.ShortenBatchHandler)
+	r.Delete("/api/user/urls", handler.DeleteUserURLs)
 	return r
 }
 
@@ -79,30 +81,43 @@ func main() {
 			panic(err)
 		}
 		defer db.Close()
-		dbStorage := &app.PostgresStorage{DB: db}
+		dbStorage := &app.PostgresStorage{
+			DB:             db,
+			DeleteURLsChan: make(chan app.DeleteURLsData),
+		}
 		if err := dbStorage.Init(context.Background()); err != nil {
 			panic(err)
 		}
 		storage = dbStorage
 	case len(*argFileStoragePath) > 0:
-		storage = &app.JSONFileStorage{Filename: *argFileStoragePath}
+		storage = &app.JSONFileStorage{
+			Filename:       *argFileStoragePath,
+			DeleteURLsChan: make(chan app.DeleteURLsData),
+		}
 	case len(envCfg.PostgresConStr) > 0:
 		db, err := sql.Open("pgx", envCfg.PostgresConStr)
 		if err != nil {
 			panic(err)
 		}
 		defer db.Close()
-		dbStorage := &app.PostgresStorage{DB: db}
+		dbStorage := &app.PostgresStorage{
+			DB:             db,
+			DeleteURLsChan: make(chan app.DeleteURLsData),
+		}
 		if err := dbStorage.Init(context.Background()); err != nil {
 			panic(err)
 		}
 		storage = dbStorage
 	case len(envCfg.FileStoragePath) > 0:
-		storage = &app.JSONFileStorage{Filename: envCfg.FileStoragePath}
+		storage = &app.JSONFileStorage{
+			Filename:       envCfg.FileStoragePath,
+			DeleteURLsChan: make(chan app.DeleteURLsData),
+		}
 	default:
 		storage = &app.StructStorage{
-			ShortToLong:   make(map[string]string),
-			UserIDToShort: make(map[uint32][]string),
+			ShortToLong:    make(map[string]app.URLDataSructure),
+			UserIDToShort:  make(map[uint32][]string),
+			DeleteURLsChan: make(chan app.DeleteURLsData),
 		}
 	}
 
@@ -111,5 +126,6 @@ func main() {
 		baseServerURL: baseURL,
 	}
 	r := NewRouter(&handler)
-	http.ListenAndServe(serverAddress, middlewareConveyor(r, gzipHandle, userTokenCookieHandle))
+	go handler.storage.ProcessDelete()
+	log.Fatal(http.ListenAndServe(serverAddress, middlewareConveyor(r, gzipHandle, userTokenCookieHandle)))
 }

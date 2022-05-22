@@ -13,30 +13,45 @@ import (
 	"github.com/jackc/pgerrcode"
 )
 
+type DeleteURLsData struct {
+	userID uint32
+	urls   []string
+}
+
 type Storage interface {
 	SaveShort(ctx context.Context, short string, longURL string, userID uint32) error
-	GetURLFromShort(ctx context.Context, short string) (string, bool)
+	GetURLFromShort(ctx context.Context, short string) (URLDataSructure, bool)
 	GetURLsByUserID(ctx context.Context, userID uint32) []string
 	SaveShortMulti(ctx context.Context, shortToLong map[string]string, userID uint32) error
+	DeleteUserURLs(userID uint32, urls []string)
+	ProcessDelete()
+}
+
+type URLDataSructure struct {
+	Long    string `json:"long"`
+	Deleted bool   `json:"deleted"`
 }
 
 type StructStorage struct {
-	mu            sync.Mutex
-	ShortToLong   map[string]string
-	UserIDToShort map[uint32][]string
+	mu             sync.Mutex
+	DeleteURLsChan chan DeleteURLsData
+	ShortToLong    map[string]URLDataSructure
+	UserIDToShort  map[uint32][]string
 }
 
 type JSONStructure struct {
-	ShortToLong   map[string]string   `json:"short_to_long,omitempty"`
-	UserIDToShort map[uint32][]string `json:"user_id_to_short,omitempty"`
+	ShortToLong   map[string]URLDataSructure `json:"short_to_long,omitempty"`
+	UserIDToShort map[uint32][]string        `json:"user_id_to_short,omitempty"`
 }
 
 type JSONFileStorage struct {
-	Filename string
+	DeleteURLsChan chan DeleteURLsData
+	Filename       string
 }
 
 type PostgresStorage struct {
-	DB *sql.DB
+	DeleteURLsChan chan DeleteURLsData
+	DB             *sql.DB
 }
 
 type DuplicateError struct{}
@@ -52,7 +67,7 @@ func (storage *StructStorage) SaveShort(ctx context.Context, short string, longU
 	if exists {
 		return &DuplicateError{}
 	}
-	storage.ShortToLong[short] = longURL
+	storage.ShortToLong[short] = URLDataSructure{Long: longURL}
 	userIDToShort, exists := storage.UserIDToShort[userID]
 	if !exists {
 		userIDToShort = make([]string, 0)
@@ -61,11 +76,11 @@ func (storage *StructStorage) SaveShort(ctx context.Context, short string, longU
 	return nil
 }
 
-func (storage *StructStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
+func (storage *StructStorage) GetURLFromShort(ctx context.Context, short string) (urlData URLDataSructure, exists bool) {
 	storage.mu.Lock()
 	defer storage.mu.Unlock()
-	longURL, exists = storage.ShortToLong[short]
-	return longURL, exists
+	urlData, exists = storage.ShortToLong[short]
+	return urlData, exists
 }
 
 func (storage *StructStorage) GetURLsByUserID(ctx context.Context, userID uint32) []string {
@@ -89,13 +104,43 @@ func (storage *StructStorage) SaveShortMulti(ctx context.Context, shortToLong ma
 		} else {
 			userIDToShort = append(userIDToShort, short)
 		}
-		storage.ShortToLong[short] = long
+		storage.ShortToLong[short] = URLDataSructure{Long: long}
 	}
 	storage.UserIDToShort[userID] = userIDToShort
 	if hasDuplicates {
 		return &DuplicateError{}
 	}
 	return nil
+}
+
+func (storage *StructStorage) DeleteUserURLs(userID uint32, urls []string) {
+	toDelete := DeleteURLsData{userID: userID, urls: urls}
+	storage.DeleteURLsChan <- toDelete
+}
+
+func (storage *StructStorage) ProcessDelete() {
+	for {
+		toDelete := <-storage.DeleteURLsChan
+		userID := toDelete.userID
+		userURLsInDB, exists := storage.UserIDToShort[userID]
+		if !exists {
+			continue
+		}
+		userURLs := make(map[string]struct{})
+		for _, shortURL := range userURLsInDB {
+			userURLs[shortURL] = struct{}{}
+		}
+		storage.mu.Lock()
+		for _, requestURL := range toDelete.urls {
+			if _, exists := userURLs[requestURL]; !exists {
+				continue
+			}
+			urlData := storage.ShortToLong[requestURL]
+			urlData.Deleted = true
+			storage.ShortToLong[requestURL] = urlData
+		}
+		storage.mu.Unlock()
+	}
 }
 
 func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) error {
@@ -112,14 +157,17 @@ func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, lon
 		data = []byte("{}")
 	}
 	savedURLs := JSONStructure{}
-	json.Unmarshal(data, &savedURLs)
+	err = json.Unmarshal(data, &savedURLs)
+	if err != nil {
+		panic(err)
+	}
 	if savedURLs.ShortToLong == nil {
-		savedURLs.ShortToLong = make(map[string]string)
+		savedURLs.ShortToLong = make(map[string]URLDataSructure)
 	}
 	if _, exists := savedURLs.ShortToLong[short]; exists {
 		return &DuplicateError{}
 	}
-	savedURLs.ShortToLong[short] = longURL
+	savedURLs.ShortToLong[short] = URLDataSructure{Long: longURL}
 	if savedURLs.UserIDToShort == nil {
 		savedURLs.UserIDToShort = make(map[uint32][]string)
 	}
@@ -132,12 +180,18 @@ func (storage *JSONFileStorage) SaveShort(ctx context.Context, short string, lon
 	if err != nil {
 		log.Fatal(err)
 	}
-	file.Seek(0, 0)
-	file.Write(updatedURLsJSON)
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Write(updatedURLsJSON)
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
-func (storage *JSONFileStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
+func (storage *JSONFileStorage) GetURLFromShort(ctx context.Context, short string) (urlData URLDataSructure, exists bool) {
 	file, err := os.OpenFile(storage.Filename, os.O_RDONLY|os.O_CREATE|os.O_SYNC, 0777)
 	if err != nil {
 		log.Fatal(err)
@@ -151,9 +205,12 @@ func (storage *JSONFileStorage) GetURLFromShort(ctx context.Context, short strin
 	if len(data) == 0 {
 		data = []byte("{}")
 	}
-	json.Unmarshal(data, &savedURLs)
-	longURL, exists = savedURLs.ShortToLong[short]
-	return longURL, exists
+	err = json.Unmarshal(data, &savedURLs)
+	if err != nil {
+		panic(err)
+	}
+	urlData, exists = savedURLs.ShortToLong[short]
+	return urlData, exists
 }
 
 func (storage *JSONFileStorage) GetURLsByUserID(ctx context.Context, userID uint32) []string {
@@ -170,7 +227,10 @@ func (storage *JSONFileStorage) GetURLsByUserID(ctx context.Context, userID uint
 	if len(data) == 0 {
 		data = []byte("{}")
 	}
-	json.Unmarshal(data, &savedURLs)
+	err = json.Unmarshal(data, &savedURLs)
+	if err != nil {
+		panic(err)
+	}
 	shortURLs := savedURLs.UserIDToShort[userID]
 	return shortURLs
 }
@@ -189,9 +249,12 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		data = []byte("{}")
 	}
 	savedURLs := JSONStructure{}
-	json.Unmarshal(data, &savedURLs)
+	err = json.Unmarshal(data, &savedURLs)
+	if err != nil {
+		panic(err)
+	}
 	if savedURLs.ShortToLong == nil {
-		savedURLs.ShortToLong = make(map[string]string)
+		savedURLs.ShortToLong = make(map[string]URLDataSructure)
 	}
 	if savedURLs.UserIDToShort == nil {
 		savedURLs.UserIDToShort = make(map[uint32][]string)
@@ -207,19 +270,91 @@ func (storage *JSONFileStorage) SaveShortMulti(ctx context.Context, shortToLong 
 		} else {
 			userIDToShort = append(userIDToShort, short)
 		}
-		savedURLs.ShortToLong[short] = long
+		savedURLs.ShortToLong[short] = URLDataSructure{Long: long}
 	}
 	savedURLs.UserIDToShort[userID] = userIDToShort
 	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
 	if err != nil {
 		log.Fatal(err)
 	}
-	file.Seek(0, 0)
-	file.Write(updatedURLsJSON)
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Write(updatedURLsJSON)
+	if err != nil {
+		panic(err)
+	}
 	if hasDuplicates {
 		return &DuplicateError{}
 	}
 	return nil
+}
+
+func (storage *JSONFileStorage) DeleteUserURLs(userID uint32, urls []string) {
+	toDelete := DeleteURLsData{userID: userID, urls: urls}
+	storage.DeleteURLsChan <- toDelete
+}
+
+func (storage *JSONFileStorage) ProcessDelete() {
+	for {
+		storage.ProcessDeleteIteration()
+	}
+}
+
+func (storage *JSONFileStorage) ProcessDeleteIteration() {
+	toDelete := <-storage.DeleteURLsChan
+	userID := toDelete.userID
+	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
+	defer file.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	savedURLs := JSONStructure{}
+	if len(data) == 0 {
+		data = []byte("{}")
+	}
+	err = json.Unmarshal(data, &savedURLs)
+	if err != nil {
+		panic(err)
+	}
+
+	userURLsInDB, exists := savedURLs.UserIDToShort[userID]
+	if !exists {
+		return
+	}
+	userURLs := make(map[string]struct{})
+	for _, shortURL := range userURLsInDB {
+		userURLs[shortURL] = struct{}{}
+	}
+	for _, requestURL := range toDelete.urls {
+		if _, exists := userURLs[requestURL]; !exists {
+			continue
+		}
+		urlData := savedURLs.ShortToLong[requestURL]
+		urlData.Deleted = true
+		savedURLs.ShortToLong[requestURL] = urlData
+	}
+	updatedURLsJSON, err := json.MarshalIndent(savedURLs, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		panic(err)
+	}
+	n, err := file.Write(updatedURLsJSON)
+	if err != nil {
+		panic(err)
+	}
+	err = file.Truncate(int64(n))
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, longURL string, userID uint32) error {
@@ -239,17 +374,18 @@ func (storage *PostgresStorage) SaveShort(ctx context.Context, short string, lon
 	return nil
 }
 
-func (storage *PostgresStorage) GetURLFromShort(ctx context.Context, short string) (longURL string, exists bool) {
+func (storage *PostgresStorage) GetURLFromShort(ctx context.Context, short string) (urlData URLDataSructure, exists bool) {
 	row := storage.DB.QueryRowContext(
 		ctx,
-		"SELECT long_url FROM short_urls WHERE short_url = $1",
+		"SELECT long_url, deleted FROM short_urls WHERE short_url = $1",
 		short,
 	)
-	err := row.Scan(&longURL)
+	urlData = URLDataSructure{}
+	err := row.Scan(&urlData.Long, &urlData.Deleted)
 	if err != nil {
-		return "", false
+		return urlData, false
 	}
-	return longURL, true
+	return urlData, true
 }
 
 func (storage *PostgresStorage) GetURLsByUserID(ctx context.Context, userID uint32) []string {
@@ -317,10 +453,46 @@ func (storage *PostgresStorage) SaveShortMulti(ctx context.Context, shortToLong 
 	return nil
 }
 
+func (storage *PostgresStorage) ProcessDelete() {
+	for {
+		storage.ProcessDeleteIteration()
+	}
+}
+
+func (storage *PostgresStorage) ProcessDeleteIteration() {
+	toDelete := <-storage.DeleteURLsChan
+	userID := toDelete.userID
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		panic(err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare("UPDATE short_urls SET deleted = true WHERE user_id = $1 and short_url = $2")
+	if err != nil {
+		panic(err)
+	}
+	defer stmt.Close()
+	for _, urlID := range toDelete.urls {
+		_, err := stmt.Exec(userID, urlID)
+		if err != nil {
+			panic(err)
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (storage *PostgresStorage) DeleteUserURLs(userID uint32, urls []string) {
+	toDelete := DeleteURLsData{userID: userID, urls: urls}
+	storage.DeleteURLsChan <- toDelete
+}
+
 func (storage *PostgresStorage) Init(ctx context.Context) error {
 	_, err := storage.DB.ExecContext(
 		ctx,
-		"CREATE TABLE IF NOT EXISTS short_urls (short_url CHAR(32) NOT NULL, long_url TEXT NOT NULL UNIQUE, user_id BIGINT)",
+		"CREATE TABLE IF NOT EXISTS short_urls (short_url CHAR(32) NOT NULL, long_url TEXT NOT NULL UNIQUE, user_id BIGINT, deleted BOOLEAN NOT NULL DEFAULT false)",
 	)
 	return err
 }
