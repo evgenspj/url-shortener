@@ -306,10 +306,10 @@ func (storage *JSONFileStorage) ProcessDeleteIteration() {
 	toDelete := <-storage.DeleteURLsChan
 	userID := toDelete.userID
 	file, err := os.OpenFile(storage.Filename, os.O_RDWR|os.O_CREATE|os.O_SYNC, 0777)
-	defer file.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer file.Close()
 	data, err := io.ReadAll(file)
 	if err != nil {
 		log.Fatal(err)
